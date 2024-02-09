@@ -1,14 +1,12 @@
 use crate::{
+    constants::{
+        PAGE_COUNT, PAGE_SIZE, SEGMENT_PT_ADDRESS_OFFSET, SEGMENT_SIZE_OFFSET, SEGMENT_WORD_COUNT,
+    },
     error::{VMError, VMResult},
     io::{pt_input::PTInput, st_input::STInput},
 };
 
-use super::{
-    constants::{
-        PAGE_COUNT, PAGE_SIZE, SEGMENT_PT_ADDRESS_OFFSET, SEGMENT_SIZE_OFFSET, SEGMENT_WORD_COUNT,
-    },
-    virtual_address::VirtualAddress,
-};
+use super::virtual_address::VirtualAddress;
 
 pub type Address = u32;
 
@@ -44,25 +42,26 @@ impl VirtualMemory {
         page_table_inputs: Vec<PTInput>,
     ) -> VMResult<()> {
         for st_input in segmentation_table_inputs {
-            let segment_address = usize::try_from(st_input.s)? * SEGMENT_WORD_COUNT;
+            let segment_address = usize::from(st_input.s) * SEGMENT_WORD_COUNT;
 
-            self.physical_memory[segment_address + SEGMENT_SIZE_OFFSET] = st_input.z;
-            self.physical_memory[segment_address + SEGMENT_PT_ADDRESS_OFFSET] = st_input.f;
+            self.physical_memory[segment_address + SEGMENT_SIZE_OFFSET] =
+                i32::try_from(st_input.z)?;
+            self.physical_memory[segment_address + SEGMENT_PT_ADDRESS_OFFSET] =
+                i32::from(st_input.f);
         }
 
         for pt_input in page_table_inputs {
-            let segment_address =
-                usize::try_from(pt_input.s)? * SEGMENT_WORD_COUNT + SEGMENT_PT_ADDRESS_OFFSET;
+            let pt_frame_num = self.physical_memory
+                [usize::from(pt_input.s) * SEGMENT_WORD_COUNT + SEGMENT_PT_ADDRESS_OFFSET];
 
-            let pt_offset = self.physical_memory[segment_address];
+            let word_offset = usize::from(pt_input.p);
 
-            let page_offset = usize::try_from(pt_input.p)?;
-
-            if pt_offset < 0 {
-                self.disk[usize::try_from(pt_offset.abs())?][page_offset] = pt_input.f;
+            if pt_frame_num < 0 {
+                self.disk[usize::try_from(pt_frame_num.abs())?][word_offset] =
+                    i32::from(pt_input.f);
             } else {
-                self.physical_memory[usize::try_from(pt_offset)? * PAGE_SIZE + page_offset] =
-                    pt_input.f;
+                self.physical_memory[usize::try_from(pt_frame_num)? * PAGE_SIZE + word_offset] =
+                    i32::from(pt_input.f);
             }
         }
 
@@ -143,12 +142,15 @@ mod tests {
     use super::*;
 
     fn before() -> VirtualMemory {
-        let st_inputs = vec![STInput::new(8, 4000, 3), STInput::new(9, 5000, -7)];
+        let st_inputs = vec![
+            STInput::new(8, 4000, 3).expect("Failed to create PTInput"),
+            STInput::new(9, 5000, -7).expect("Failed to create PTInput"),
+        ];
         let pt_inputs = vec![
-            PTInput::new(8, 0, 10),
-            PTInput::new(8, 1, -20),
-            PTInput::new(9, 0, 13),
-            PTInput::new(9, 1, -25),
+            PTInput::new(8, 0, 10).expect("Failed to create PTInput"),
+            PTInput::new(8, 1, -20).expect("Failed to create PTInput"),
+            PTInput::new(9, 0, 13).expect("Failed to create PTInput"),
+            PTInput::new(9, 1, -25).expect("Failed to create PTInput"),
         ];
 
         let mut virtual_memory = VirtualMemory::new();
@@ -190,7 +192,8 @@ mod tests {
     #[test]
     fn simple_translate() {
         let mut vm = before();
-        let virtual_address = VirtualAddress::new(2097162);
+        let virtual_address =
+            VirtualAddress::new(2097162).expect("Failed to create VirtualAddress");
         let expected_address = 5130;
 
         let address = vm.translate(virtual_address).expect("Failed to translate");
@@ -201,7 +204,8 @@ mod tests {
     #[test]
     fn pg_not_resident() {
         let mut vm = before();
-        let virtual_address = VirtualAddress::new(2097674);
+        let virtual_address =
+            VirtualAddress::new(2097674).expect("Failed to create VirtualAddress");
         let expected_address = 1034;
 
         let address = vm.translate(virtual_address).expect("Failed to translate");
@@ -212,7 +216,8 @@ mod tests {
     #[test]
     fn pt_not_resident() {
         let mut vm = before();
-        let virtual_address = VirtualAddress::new(2359306);
+        let virtual_address =
+            VirtualAddress::new(2359306).expect("Failed to create VirtualAddress");
         let expected_address = 6666;
 
         let address = vm.translate(virtual_address).expect("Failed to translate");
@@ -223,11 +228,37 @@ mod tests {
     #[test]
     fn pt_and_pg_not_resident() {
         let mut vm = before();
-        let virtual_address = VirtualAddress::new(2359818);
+        let virtual_address =
+            VirtualAddress::new(2359818).expect("Failed to create VirtualAddress");
         let expected_address = 2058;
 
         let address = vm.translate(virtual_address).expect("Failed to translate");
 
         assert_eq!(address, expected_address);
+    }
+
+    #[test]
+    fn find_free_page() {
+        let mut vm = VirtualMemory::new();
+
+        let free_page = vm.find_free_page().expect("Failed to find free page");
+        assert_eq!(free_page, 2);
+
+        vm.physical_memory[PAGE_SIZE * 2] = 1;
+
+        let free_page = vm.find_free_page().expect("Failed to find free page");
+        assert_eq!(free_page, 3);
+    }
+
+    #[test]
+    fn find_free_page_full() {
+        let mut vm = VirtualMemory::new();
+
+        for i in 0..PAGE_COUNT {
+            vm.physical_memory[i * PAGE_SIZE] = 1;
+        }
+
+        let free_page = vm.find_free_page();
+        assert_eq!(free_page.unwrap_err(), VMError::MemoryFull);
     }
 }

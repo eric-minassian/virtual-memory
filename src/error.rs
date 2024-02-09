@@ -1,8 +1,13 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::module_name_repetitions)]
 pub enum VMError {
     GeneralError,
     MemoryFull,
+    InvalidSegment,
+    InvalidSegmentSize,
+    InvalidFrame,
+    InvalidPage,
+    VirtualAddressLeadingBits,
 }
 
 impl From<std::num::TryFromIntError> for VMError {
