@@ -12,6 +12,10 @@ pub struct VirtualAddress {
 }
 
 impl VirtualAddress {
+    /// Creates a new `VirtualAddress` from the given `virtual_address`.
+    ///
+    /// # Errors
+    /// - `VMError::VirtualAddressLeadingBits` if the leading bits of the `virtual_address` are not 0.
     pub const fn new(virtual_address: u32) -> VMResult<Self> {
         let mask = u32::MAX >> (32 - (SEGMENT_SIZE_BITS + PAGE_SIZE_BITS + PAGE_SIZE_BITS));
 
