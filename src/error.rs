@@ -11,6 +11,7 @@ pub enum VMError {
     VirtualAddressOutOfBounds,
     MemoryNotInitialized,
     TryFromIntError,
+    IOError,
 }
 
 impl From<std::num::TryFromIntError> for VMError {
