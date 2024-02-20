@@ -8,9 +8,9 @@ use super::data::{
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct STInput {
-    pub s: segment_offset::Value,
-    pub z: segment_size::Value,
-    pub f: frame_offset::Value,
+    pub segment: segment_offset::Value,
+    pub size: segment_size::Value,
+    pub frame: frame_offset::Value,
 }
 
 impl STInput {
@@ -19,11 +19,11 @@ impl STInput {
     /// # Errors
     ///
     /// Returns an error if the segment, segment size, or frame are invalid.
-    pub fn new(s: &str, z: &str, f: &str) -> VMResult<Self> {
+    pub fn new(segment: &str, size: &str, frame: &str) -> VMResult<Self> {
         Ok(Self {
-            s: SegmentOffset::new(s)?.value(),
-            z: SegmentSize::new(z)?.value(),
-            f: FrameOffset::new(f)?.value(),
+            segment: SegmentOffset::new(segment)?.value(),
+            size: SegmentSize::new(size)?.value(),
+            frame: FrameOffset::new(frame)?.value(),
         })
     }
 }

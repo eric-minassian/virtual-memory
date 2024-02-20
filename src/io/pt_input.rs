@@ -7,9 +7,9 @@ use super::data::{frame_offset, page_offset, segment_offset};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PTInput {
-    pub s: segment_offset::Value,
-    pub p: page_offset::Value,
-    pub f: frame_offset::Value,
+    pub segment: segment_offset::Value,
+    pub page: page_offset::Value,
+    pub frame: frame_offset::Value,
 }
 
 impl PTInput {
@@ -18,11 +18,11 @@ impl PTInput {
     /// # Errors
     ///
     /// Returns an error if the segment, page, or frame are invalid.
-    pub fn new(s: &str, p: &str, f: &str) -> VMResult<Self> {
+    pub fn new(segment: &str, page: &str, frame: &str) -> VMResult<Self> {
         Ok(Self {
-            s: SegmentOffset::new(s)?.value(),
-            p: PageOffset::new(p)?.value(),
-            f: FrameOffset::new(f)?.value(),
+            segment: SegmentOffset::new(segment)?.value(),
+            page: PageOffset::new(page)?.value(),
+            frame: FrameOffset::new(frame)?.value(),
         })
     }
 }
