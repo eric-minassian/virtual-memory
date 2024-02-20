@@ -19,6 +19,7 @@ impl SegmentOffset {
         Ok(Self(input))
     }
 
+    #[must_use]
     pub const fn value(&self) -> Value {
         self.0
     }

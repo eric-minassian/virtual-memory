@@ -38,10 +38,8 @@ fn process_init(file_path: PathBuf) -> VMResult<VirtualMemory> {
         })
         .collect();
 
-    let mut virtual_memory = VirtualMemory::new();
-    virtual_memory
-        .init(st_inputs, pt_inputs)
-        .expect("Failed to initialize virtual memory");
+    let virtual_memory =
+        VirtualMemory::new(st_inputs, pt_inputs).expect("Failed to initialize virtual memory");
 
     Ok(virtual_memory)
 }
@@ -64,7 +62,6 @@ pub fn process(
         .map_err(|_| VMError::IOError)?;
 
     let output_data: String = input_data
-        .trim()
         .split_whitespace()
         .map(|address| {
             let virtual_address =
