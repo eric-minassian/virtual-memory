@@ -17,7 +17,6 @@ fn process_init(file_path: PathBuf) -> VMResult<VirtualMemory> {
     let mut line = String::new();
     reader.read_line(&mut line).map_err(|_| VMError::IOError)?;
 
-    // Chunks of 3 &str elements
     let st_inputs: Vec<STInput> = line
         .split_whitespace()
         .collect::<Vec<&str>>()
@@ -81,4 +80,27 @@ pub fn process(
     writeln!(writer, "{}", output_data).map_err(|_| VMError::IOError)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::read_to_string;
+
+    use super::*;
+
+    #[test]
+    fn basic() {
+        process(
+            "test-data/init.txt".into(),
+            "test-data/input.txt".into(),
+            "test-data/output.tmp".into(),
+        )
+        .expect("Failed to process basic example");
+
+        let expected_output =
+            read_to_string("test-data/output.txt").expect("Failed to read expected output");
+        let output = read_to_string("test-data/output.tmp").expect("Failed to read output");
+
+        assert_eq!(expected_output, output);
+    }
 }

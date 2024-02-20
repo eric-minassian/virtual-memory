@@ -4,15 +4,15 @@ use crate::{
     },
     error::{VMError, VMResult},
     io::{pt_input::PTInput, st_input::STInput},
-    vm::virtual_address::VirtualAddress,
+    vm::{frame::Frame, virtual_address::VirtualAddress},
 };
 
 pub type Address = u32;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VirtualMemory {
-    physical_memory: Vec<i32>,
-    disk: Vec<Vec<i32>>,
+    physical_memory: Vec<Frame>,
+    disk: Vec<[i32; PAGE_SIZE]>,
 }
 
 impl Default for VirtualMemory {
@@ -25,8 +25,8 @@ impl VirtualMemory {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            physical_memory: vec![0; PAGE_SIZE * PAGE_COUNT],
-            disk: vec![vec![0; PAGE_SIZE]; PAGE_COUNT],
+            physical_memory: vec![Frame::new(); PAGE_COUNT],
+            disk: vec![[0; PAGE_SIZE]; PAGE_COUNT],
         }
     }
 
@@ -43,15 +43,23 @@ impl VirtualMemory {
         for st_input in segmentation_table_inputs {
             let segment_address = usize::from(st_input.s) * SEGMENT_WORD_COUNT;
 
-            self.physical_memory[segment_address + SEGMENT_SIZE_OFFSET] =
-                i32::try_from(st_input.z)?;
-            self.physical_memory[segment_address + SEGMENT_PAGE_TABLE_OFFSET] =
-                i32::from(st_input.f);
+            self.physical_memory[(segment_address + SEGMENT_SIZE_OFFSET) / PAGE_SIZE].data
+                [(segment_address + SEGMENT_SIZE_OFFSET) % PAGE_SIZE] = i32::try_from(st_input.z)?;
+            self.physical_memory[(segment_address + SEGMENT_PAGE_TABLE_OFFSET) / PAGE_SIZE].data
+                [(segment_address + SEGMENT_PAGE_TABLE_OFFSET) % PAGE_SIZE] =
+                i32::try_from(st_input.f)?;
+
+            if st_input.f.is_positive() {
+                self.physical_memory[usize::try_from(st_input.f)?].free = false;
+            }
         }
 
         for pt_input in page_table_inputs {
-            let pt_frame_num = self.physical_memory
-                [usize::from(pt_input.s) * SEGMENT_WORD_COUNT + SEGMENT_PAGE_TABLE_OFFSET];
+            let pt_frame_num = self.physical_memory[(usize::from(pt_input.s) * SEGMENT_WORD_COUNT
+                + SEGMENT_PAGE_TABLE_OFFSET)
+                / PAGE_SIZE]
+                .data[(usize::from(pt_input.s) * SEGMENT_WORD_COUNT + SEGMENT_PAGE_TABLE_OFFSET)
+                % PAGE_SIZE];
 
             let page_offset = usize::from(pt_input.p);
 
@@ -59,22 +67,27 @@ impl VirtualMemory {
                 self.disk[usize::try_from(pt_frame_num.abs())?][page_offset] =
                     i32::from(pt_input.f);
             } else {
-                self.physical_memory[usize::try_from(pt_frame_num)? * PAGE_SIZE + page_offset] =
+                self.physical_memory[usize::try_from(pt_frame_num)?].data[page_offset] =
                     i32::from(pt_input.f);
+            }
+
+            if pt_input.f.is_positive() {
+                self.physical_memory[usize::try_from(pt_input.f)?].free = false;
             }
         }
 
         Ok(())
     }
 
-    fn find_free_page(&self) -> VMResult<usize> {
+    fn find_free_page(&mut self) -> VMResult<usize> {
         for (i, page) in self
             .physical_memory
-            .chunks(PAGE_SIZE)
+            .iter()
             .enumerate()
             .skip(SEGMENT_WORD_COUNT)
         {
-            if page.iter().all(|&x| x == 0) {
+            if page.free {
+                self.physical_memory[i].free = false;
                 return Ok(i);
             }
         }
@@ -91,27 +104,35 @@ impl VirtualMemory {
     /// - `VMError::GeneralError` if an error occurs while converting the virtual address to an
     pub fn translate(&mut self, virtual_address: VirtualAddress) -> VMResult<Address> {
         let segment_address: usize = usize::from(virtual_address.s) * SEGMENT_WORD_COUNT;
-        let segment_size = self.physical_memory[segment_address + SEGMENT_SIZE_OFFSET];
+        let segment_size = self.physical_memory
+            [(segment_address + SEGMENT_SIZE_OFFSET) / PAGE_SIZE]
+            .data[(segment_address + SEGMENT_SIZE_OFFSET) % PAGE_SIZE];
 
         if virtual_address.pw >= u32::try_from(segment_size)? {
             return Err(VMError::VirtualAddressOutOfBounds);
         }
 
-        let page_table_offset = match self
-            .physical_memory
-            .get(segment_address + SEGMENT_PAGE_TABLE_OFFSET)
+        let page_table_offset = match self.physical_memory
+            [(segment_address + SEGMENT_PAGE_TABLE_OFFSET) / PAGE_SIZE]
+            .data
+            .get((segment_address + SEGMENT_PAGE_TABLE_OFFSET) % PAGE_SIZE)
         {
             Some(&offset) => match offset {
                 offset if offset < 0 => {
                     let disk_offset = usize::try_from(offset.abs())?;
                     let free_page_offset = self.find_free_page()?;
 
-                    self.physical_memory[segment_address + SEGMENT_PAGE_TABLE_OFFSET] =
+                    // self.physical_memory[segment_address + SEGMENT_PAGE_TABLE_OFFSET] =
+                    //     i32::try_from(free_page_offset)?;
+                    self.physical_memory
+                        [(segment_address + SEGMENT_PAGE_TABLE_OFFSET) / PAGE_SIZE]
+                        .data[(segment_address + SEGMENT_PAGE_TABLE_OFFSET) % PAGE_SIZE] =
                         i32::try_from(free_page_offset)?;
 
                     // Copy Frame From Disk to Memory
                     for (i, &page) in self.disk[disk_offset].iter().enumerate() {
-                        self.physical_memory[free_page_offset * PAGE_SIZE + i] = page;
+                        // self.physical_memory[free_page_offset * PAGE_SIZE + i] = page;
+                        self.physical_memory[free_page_offset].data[i] = page;
                     }
 
                     free_page_offset
@@ -122,20 +143,25 @@ impl VirtualMemory {
             None => return Err(VMError::VirtualAddressOutOfBounds),
         };
 
-        let page_address = page_table_offset * PAGE_SIZE + usize::from(virtual_address.p);
+        // let page_address = page_table_offset * PAGE_SIZE + usize::from(virtual_address.p);
 
-        let page_offset = match self.physical_memory.get(page_address) {
+        let page_offset = match self.physical_memory[page_table_offset]
+            .data
+            .get(usize::from(virtual_address.p))
+        {
             Some(&offset) => {
                 match offset {
                     offset if offset < 0 => {
                         let disk_offset = usize::try_from(offset.abs())?;
                         let free_page_offset = self.find_free_page()?;
 
-                        self.physical_memory[page_address] = i32::try_from(free_page_offset)?;
+                        self.physical_memory[page_table_offset].data
+                            [usize::from(virtual_address.p)] = i32::try_from(free_page_offset)?;
 
                         // Copy Frame From Disk to Memory
                         for (i, &page) in self.disk[disk_offset].iter().enumerate() {
-                            self.physical_memory[free_page_offset * PAGE_SIZE + i] = page;
+                            // self.physical_memory[free_page_offset * PAGE_SIZE + i] = page;
+                            self.physical_memory[free_page_offset].data[i] = page;
                         }
 
                         free_page_offset
@@ -183,28 +209,16 @@ mod tests {
     fn init() {
         let virtual_memory = before();
 
-        assert_eq!(
-            virtual_memory.physical_memory[8 * SEGMENT_WORD_COUNT + SEGMENT_SIZE_OFFSET],
-            4000
-        );
-        assert_eq!(
-            virtual_memory.physical_memory[8 * SEGMENT_WORD_COUNT + SEGMENT_PAGE_TABLE_OFFSET],
-            3
-        );
-        assert_eq!(
-            virtual_memory.physical_memory[9 * SEGMENT_WORD_COUNT + SEGMENT_SIZE_OFFSET],
-            5000
-        );
-        assert_eq!(
-            virtual_memory.physical_memory[9 * SEGMENT_WORD_COUNT + SEGMENT_PAGE_TABLE_OFFSET],
-            -7
-        );
+        assert_eq!(virtual_memory.physical_memory[0].data[8 * 2], 4000);
+        assert_eq!(virtual_memory.physical_memory[0].data[8 * 2 + 1], 3);
+        assert_eq!(virtual_memory.physical_memory[0].data[9 * 2], 5000);
+        assert_eq!(virtual_memory.physical_memory[0].data[9 * 2 + 1], -7);
 
         assert_eq!(virtual_memory.disk[7][0], 13);
         assert_eq!(virtual_memory.disk[7][1], -25);
 
-        assert_eq!(virtual_memory.physical_memory[3 * PAGE_SIZE], 10);
-        assert_eq!(virtual_memory.physical_memory[3 * PAGE_SIZE + 1], -20);
+        assert_eq!(virtual_memory.physical_memory[3].data[0], 10);
+        assert_eq!(virtual_memory.physical_memory[3].data[1], -20);
     }
 
     #[test]
@@ -262,8 +276,6 @@ mod tests {
         let free_page = vm.find_free_page().expect("Failed to find free page");
         assert_eq!(free_page, 2);
 
-        vm.physical_memory[PAGE_SIZE * 2] = 1;
-
         let free_page = vm.find_free_page().expect("Failed to find free page");
         assert_eq!(free_page, 3);
     }
@@ -273,7 +285,7 @@ mod tests {
         let mut vm = VirtualMemory::new();
 
         for i in 0..PAGE_COUNT {
-            vm.physical_memory[i * PAGE_SIZE] = 1;
+            vm.physical_memory[i].free = false;
         }
 
         let free_page = vm.find_free_page();
