@@ -68,9 +68,9 @@ pub fn process(
                 VirtualAddress::new(address.parse().expect("Invalid Data")).expect("Invalid Data");
             virtual_memory
                 .translate(virtual_address)
-                .expect("Invalid Data")
+                .map(|address| address.to_string())
+                .unwrap_or_else(|_| "error".to_string())
         })
-        .map(|address| address.to_string())
         .collect::<Vec<String>>()
         .join(" ");
 
@@ -97,6 +97,22 @@ mod tests {
         let expected_output =
             read_to_string("test-data/output.txt").expect("Failed to read expected output");
         let output = read_to_string("test-data/output.tmp").expect("Failed to read output");
+
+        assert_eq!(expected_output, output);
+    }
+
+    #[test]
+    fn error() {
+        process(
+            "test-data/error_init.txt".into(),
+            "test-data/error_input.txt".into(),
+            "test-data/error_output.tmp".into(),
+        )
+        .expect("Failed to process error example");
+
+        let expected_output =
+            read_to_string("test-data/error_output.txt").expect("Failed to read expected output");
+        let output = read_to_string("test-data/error_output.tmp").expect("Failed to read output");
 
         assert_eq!(expected_output, output);
     }
