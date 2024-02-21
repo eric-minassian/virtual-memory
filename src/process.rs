@@ -66,10 +66,12 @@ pub fn process(
         .map(|address| {
             let virtual_address =
                 VirtualAddress::new(address.parse().expect("Invalid Data")).expect("Invalid Data");
-            virtual_memory
-                .translate(virtual_address)
-                .map(|address| address.to_string())
-                .unwrap_or_else(|_| "error".to_string())
+
+            match virtual_memory.translate(virtual_address) {
+                Ok(physical_address) => physical_address.to_string(),
+                Err(VMError::VirtualAddressOutOfBounds) => "error".to_string(),
+                Err(error) => panic!("{:?}", error),
+            }
         })
         .collect::<Vec<String>>()
         .join(" ");

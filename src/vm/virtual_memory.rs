@@ -41,6 +41,7 @@ impl VirtualMemory {
                 i32::try_from(st_input.frame)?,
             );
 
+            // Mark Page Table Frames as taken
             if st_input.frame.is_positive() {
                 physical_memory[usize::try_from(st_input.frame)?].free = false;
             }
@@ -53,7 +54,7 @@ impl VirtualMemory {
 
             let page_offset = usize::from(pt_input.page);
 
-            if pt_frame_num < 0 {
+            if pt_frame_num.is_negative() {
                 disk[usize::try_from(pt_frame_num.abs())?][page_offset] = i32::from(pt_input.frame);
             } else {
                 physical_memory.set_word_by_offset(
@@ -63,6 +64,7 @@ impl VirtualMemory {
                 );
             }
 
+            // Mark Page Frames as taken
             if pt_input.frame.is_positive() {
                 physical_memory[usize::try_from(pt_input.frame)?].free = false;
             }
@@ -82,74 +84,36 @@ impl VirtualMemory {
             .find(|(_, frame)| frame.free)
             .map(|(i, frame)| {
                 frame.free = false;
-
                 i
             })
             .ok_or(VMError::MemoryFull)
     }
 
-    fn get_page_table_frame(&mut self, segment_base: usize) -> VMResult<usize> {
-        match self
-            .physical_memory
-            .get_word_by_address(segment_base + SEGMENT_PAGE_TABLE_OFFSET)
-        {
-            offset if offset < 0 => {
-                let disk_offset = usize::try_from(offset.abs())?;
-                let free_page_offset = self.allocate_page()?;
+    fn get_frame(&mut self, address: usize) -> VMResult<usize> {
+        match self.physical_memory.get_word_by_address(address) {
+            // Not Resident in Memory
+            frame if frame < 0 => {
+                let disk_frame = usize::try_from(frame.abs())?;
+                let free_frame = self.allocate_page()?;
 
-                self.physical_memory.set_word_by_address(
-                    segment_base + SEGMENT_PAGE_TABLE_OFFSET,
-                    i32::try_from(free_page_offset)?,
-                );
+                self.physical_memory
+                    .set_word_by_address(address, i32::try_from(free_frame)?);
 
                 // Copy Frame From Disk to Memory
-                for (i, &page) in self.disk[disk_offset].iter().enumerate() {
-                    self.physical_memory
-                        .set_word_by_offset(free_page_offset, i, page);
+                for (i, &word) in self.disk[disk_frame].iter().enumerate() {
+                    self.physical_memory.set_word_by_offset(free_frame, i, word);
                 }
 
-                Ok(free_page_offset)
+                Ok(free_frame)
             }
+            // Not Initialized
             0 => Err(VMError::MemoryNotInitialized),
+
+            // Resident in Memory
             offset => Ok(usize::try_from(offset)?),
         }
     }
 
-    fn get_page_frame(&mut self, page_table_frame: usize, page_offset: usize) -> VMResult<usize> {
-        match self
-            .physical_memory
-            .get_word_by_offset(page_table_frame, page_offset)
-        {
-            offset if offset < 0 => {
-                let disk_offset = usize::try_from(offset.abs())?;
-                let free_page_offset = self.allocate_page()?;
-
-                self.physical_memory.set_word_by_offset(
-                    page_table_frame,
-                    page_offset,
-                    i32::try_from(free_page_offset)?,
-                );
-
-                // Copy Frame From Disk to Memory
-                for (i, &page) in self.disk[disk_offset].iter().enumerate() {
-                    self.physical_memory
-                        .set_word_by_offset(free_page_offset, i, page);
-                }
-
-                Ok(free_page_offset)
-            }
-            0 => Err(VMError::MemoryNotInitialized),
-            offset => Ok(usize::try_from(offset)?),
-        }
-    }
-
-    /// Initializes the virtual memory with the given segmentation and page table inputs.
-    ///
-    /// # Errors
-    ///
-    /// - `VMError::VirtualAddressOutOfBounds` if the virtual address is out of bounds.
-    /// - `VMError::MemoryNotInitialized` if the memory is not initialized.
-    /// - `VMError::GeneralError` if an error occurs while converting the virtual address to an
     pub fn translate(&mut self, virtual_address: VirtualAddress) -> VMResult<Address> {
         let segment_base: usize = usize::from(virtual_address.s) * SEGMENT_WORD_COUNT;
         let segment_size = self
@@ -160,11 +124,12 @@ impl VirtualMemory {
             return Err(VMError::VirtualAddressOutOfBounds);
         }
 
-        let page_table_frame = self.get_page_table_frame(segment_base)?;
-        let page_offset = self.get_page_frame(page_table_frame, virtual_address.p.into())?;
+        let page_table_frame = self.get_frame(segment_base + SEGMENT_PAGE_TABLE_OFFSET)?;
+        let page_frame =
+            self.get_frame(page_table_frame * PAGE_SIZE + usize::from(virtual_address.p))?;
 
         Ok(u32::try_from(
-            page_offset * PAGE_SIZE + usize::from(virtual_address.w),
+            page_frame * PAGE_SIZE + usize::from(virtual_address.w),
         )?)
     }
 }
