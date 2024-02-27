@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
 };
 
@@ -11,11 +11,11 @@ use virtual_memory::{
 };
 
 fn process_init(file_path: PathBuf) -> VMResult<VirtualMemory> {
-    let f = File::open(file_path).map_err(|_| VMError::IOError)?;
+    let f = File::open(file_path)?;
     let mut reader = BufReader::new(f);
 
     let mut line = String::new();
-    reader.read_line(&mut line).map_err(|_| VMError::IOError)?;
+    reader.read_line(&mut line)?;
 
     let st_inputs: Vec<STInput> = line
         .split_whitespace()
@@ -27,7 +27,7 @@ fn process_init(file_path: PathBuf) -> VMResult<VirtualMemory> {
         .collect();
 
     line.clear();
-    reader.read_line(&mut line).map_err(|_| VMError::IOError)?;
+    reader.read_line(&mut line)?;
 
     let pt_inputs: Vec<PTInput> = line
         .split_whitespace()
@@ -51,15 +51,10 @@ pub fn process(
 ) -> VMResult<()> {
     let mut virtual_memory = process_init(init_file_path)?;
 
-    let output_file = File::create(output_file_path).map_err(|_| VMError::IOError)?;
-    let mut writer = BufWriter::new(output_file);
-
-    let mut input_file = File::open(input_file_path).map_err(|_| VMError::IOError)?;
+    let mut input_file = File::open(input_file_path)?;
 
     let mut input_data = String::new();
-    input_file
-        .read_to_string(&mut input_data)
-        .map_err(|_| VMError::IOError)?;
+    input_file.read_to_string(&mut input_data)?;
 
     let output_data: String = input_data
         .split_whitespace()
@@ -69,14 +64,16 @@ pub fn process(
 
             match virtual_memory.translate(virtual_address) {
                 Ok(physical_address) => physical_address.to_string(),
-                Err(VMError::VirtualAddressOutOfBounds) => "error".to_string(),
+                Err(VMError::VirtualAddressOutOfBounds) => (-1).to_string(),
+                Err(VMError::MemoryNotInitialized) => (-1).to_string(),
                 Err(error) => panic!("{:?}", error),
             }
         })
         .collect::<Vec<String>>()
         .join(" ");
 
-    writeln!(writer, "{}", output_data).map_err(|_| VMError::IOError)?;
+    let mut output_file = File::create(output_file_path)?;
+    writeln!(output_file, "{}", output_data)?;
 
     Ok(())
 }

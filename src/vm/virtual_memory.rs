@@ -38,7 +38,7 @@ impl VirtualMemory {
             );
             physical_memory.set_word_by_address(
                 segment_base_address + SEGMENT_PAGE_TABLE_OFFSET,
-                i32::try_from(st_input.frame)?,
+                i32::from(st_input.frame),
             );
 
             // Mark Page Table Frames as taken

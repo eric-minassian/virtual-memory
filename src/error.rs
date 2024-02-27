@@ -1,7 +1,6 @@
 #[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::module_name_repetitions)]
 pub enum VMError {
-    GeneralError,
     MemoryFull,
     InvalidSegment,
     InvalidSegmentSize,
@@ -11,7 +10,7 @@ pub enum VMError {
     VirtualAddressOutOfBounds,
     MemoryNotInitialized,
     TryFromIntError,
-    IOError,
+    IOError(String),
 }
 
 impl From<std::num::TryFromIntError> for VMError {
@@ -23,6 +22,12 @@ impl From<std::num::TryFromIntError> for VMError {
 impl From<std::convert::Infallible> for VMError {
     fn from(_: std::convert::Infallible) -> Self {
         Self::TryFromIntError
+    }
+}
+
+impl From<std::io::Error> for VMError {
+    fn from(error: std::io::Error) -> Self {
+        Self::IOError(error.to_string())
     }
 }
 
