@@ -9,19 +9,19 @@ pub enum VMError {
     VirtualAddressLeadingBits,
     VirtualAddressOutOfBounds,
     MemoryNotInitialized,
-    TryFromIntError,
+    TryFromIntError(String),
     IOError(String),
 }
 
 impl From<std::num::TryFromIntError> for VMError {
-    fn from(_: std::num::TryFromIntError) -> Self {
-        Self::TryFromIntError
+    fn from(error: std::num::TryFromIntError) -> Self {
+        Self::TryFromIntError(error.to_string())
     }
 }
 
 impl From<std::convert::Infallible> for VMError {
-    fn from(_: std::convert::Infallible) -> Self {
-        Self::TryFromIntError
+    fn from(error: std::convert::Infallible) -> Self {
+        Self::TryFromIntError(error.to_string())
     }
 }
 

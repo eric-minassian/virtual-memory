@@ -59,13 +59,14 @@ pub fn process(
     let output_data: String = input_data
         .split_whitespace()
         .map(|address| {
-            let virtual_address =
-                VirtualAddress::new(address.parse().expect("Invalid Data")).expect("Invalid Data");
+            let virtual_address = VirtualAddress::new(address.parse().expect("Invalid Input Data"))
+                .expect("Invalid Data");
 
             match virtual_memory.translate(virtual_address) {
                 Ok(physical_address) => physical_address.to_string(),
-                Err(VMError::VirtualAddressOutOfBounds) => (-1).to_string(),
-                Err(VMError::MemoryNotInitialized) => (-1).to_string(),
+                Err(VMError::VirtualAddressOutOfBounds | VMError::MemoryNotInitialized) => {
+                    (-1).to_string()
+                }
                 Err(error) => panic!("{:?}", error),
             }
         })

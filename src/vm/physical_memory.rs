@@ -4,6 +4,7 @@ use super::frame::Frame;
 
 pub type PhysicalMemory = Vec<Frame>;
 
+#[allow(clippy::module_name_repetitions)]
 pub trait PhysicalMemoryTrait {
     fn new_memory() -> Self;
     fn get_word_by_address(&self, address: usize) -> i32;

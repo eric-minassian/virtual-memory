@@ -8,7 +8,7 @@ fn main() {
         "input-dp.txt".into(),
         "output-dp.txt".into(),
     ) {
-        Ok(_) => println!("Process completed successfully"),
+        Ok(()) => println!("Process completed successfully"),
         Err(e) => println!("Process failed: {:?}", e),
     }
 }
